@@ -1,4 +1,4 @@
 # python test.py --data data/coco8.yaml --weights runs/train/yololit_320_4w4a_requant4_adam/weights/bester.pt --cfg runs/train/yololit_320_4w4a_requant4_adam/cfg.yaml --batch-size 16 --img-size 320 --name adam_and_ema_test --no-trace
 # python test.py --data data/coco.yaml --weights yolov8n_dict.pt --cfg cfg/training/yolov8.yaml --batch-size 16 --img-size 320 --name yolov8_pretrainedtest --no-trace
-python test.py --data data/coco.yaml --weights runs/train/quantyolov8_4w4a_a4_comact_fropt_frbn2/weights/best.pt --cfg runs/train/quantyolov8_4w4a_a4_comact_fropt_frbn2/cfg.yaml --batch-size 16 --img-size 320 --name quantyolov8_4w4a
+#python test.py --data data/coco.yaml --weights runs/train/quantyolov8_4w4a_a4_comact_fropt_frbn2/weights/best.pt --cfg runs/train/quantyolov8_4w4a_a4_comact_fropt_frbn2/cfg.yaml --batch-size 16 --img-size 320 --name quantyolov8_4w4a
 # python test.py --data data/coco.yaml --weights runs/train/v8_float_3202/weights/best.pt --cfg runs/train/v8_float_3202/cfg.yaml --batch-size 16 --img-size 320 --name yolov8_myfloat --no-trace
