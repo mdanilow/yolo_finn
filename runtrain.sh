@@ -9,4 +9,4 @@
 # python train.py --cfg cfg/training/quantyolov8_4w4a.yaml --weights runs/train/v8_float_320/weights/best.pt --hyp data/hyp_v8_finetune_lre3.yaml --name quantyolov8_4w4a --img-size 320 320 --fresh_ema --batch-size 32 --epochs 900 --device 0
 #python train.py --cfg cfg/training/quantyolov8_4w4a.yaml --weights runs/train/v8_float_320/weights/best.pt --hyp data/hyp_v8_finetune_lre3.yaml --name quantyolov8_4w4a_freezebn --img-size 320 320 --fresh_ema --batch-size 32 --epochs 900 --device 0 --freeze_bn_stats
 
-python3 train.py --data data/data.yaml --cfg cfg/training/quantyolov8_8w8a.yaml --weights '' --hyp data/hyp_v8_finetune_lre3.yaml --name quantyolov8_8w8a --img-size 320 320 --fresh_ema --batch-size 32 --epochs 300 --device 0
+python3 train.py --data data/data.yaml --cfg cfg/training/quantyolov8_8w8a.yaml --weights runs/train/yolov8n/train/yolo8n_train/weights/best.pt --hyp data/hyp_v8_finetune_lre3.yaml --name quantyolov8_8w8a --img-size 416 416 --fresh_ema --batch-size 32 --epochs 900 --device 0

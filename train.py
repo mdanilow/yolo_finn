@@ -2,6 +2,7 @@ import argparse
 import logging
 import math
 import os
+import test  
 import random
 import time
 from copy import deepcopy
@@ -24,8 +25,6 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
-import test  # import test.py to get mAP after each epoch
-# from models.experimental import attempt_load
 from models.yolo import Model, get_model
 from utils.autoanchor import check_anchors
 from utils.datasets import create_dataloader
@@ -41,28 +40,23 @@ from utils.wandb_logging.wandb_utils import WandbLogger, check_wandb_resume
 logger = logging.getLogger(__name__)
 
 
-# def get_model(cfg_path, weights_path, num_classes, device):
+#def get_model(cfg_path, weights_path=None, num_classes=80, device='cpu', backbone_only=False, in_channels=3):
 #     weights_path = weights_path[0] if isinstance(weights_path, list) else weights_path
 #     ckpt = torch.load(weights_path, map_location=device)  # load checkpoint
-#     model = Model(cfg_path, ch=3, nc=num_classes).to(device)  # create
-#     # state_dict = ckpt['model'].float().state_dict()  # to FP32
+#     model = Model(cfg_path, ch=in_channels, nc=num_classes, backbone_only=backbone_only).to(device)  # create
 #     state_dict = ckpt['model']
-#     # print('checkpoint dict:')
-#     # for k, v in state_dict.items():
-#     #     print(k, v.shape)
-#     # print('model dict:')
-#     # for k, v in model.state_dict().items():
-#     #     print(k, v.shape)
+#    
 #     if list(state_dict.keys())[0].split('.')[0] == 'module':  #state dict saved from nn.DataParallel model
 #         final_dict = {}
 #         for k, v in state_dict.items():
 #             new_k = '.'.join(k.split('.')[1:])
 #             final_dict[new_k] = v
-#     state_dict = final_dict
+#     	 state_dict = final_dict
+#     	 
 #     state_dict = intersect_dicts(state_dict, model.state_dict())  # intersect
 #     model.load_state_dict(state_dict, strict=False)  # load
 #     logger.info('Transferred %g/%g items from %s' % (len(state_dict), len(model.state_dict()), weights_path))  # report
-
+#
 #     return model.to(device), ckpt
 
 
@@ -115,7 +109,7 @@ def train(hyp, opt, device, tb_writer=None):
         with torch_distributed_zero_first(rank):
             attempt_download(weights)  # download if not found locally
         print('INIT FROM EMA:', opt.init_from_ema)
-        model, ckpt, arch_changed = get_model(opt.cfg, weights, nc, device, load_ema=opt.init_from_ema, bn_from_ema=opt.freeze_bn_stats)
+        model, ckpt, arch_changed = get_model(opt.cfg, weights, nc, device)
     else:
         model = Model(opt.cfg, ch=3, nc=nc).to(device)  # create
     with torch_distributed_zero_first(rank):

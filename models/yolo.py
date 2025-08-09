@@ -53,7 +53,7 @@ def get_model(cfg_path, weights_path=None, num_classes=80, device='cpu', backbon
             state_dict = final_dict
 
         state_dict = intersect_dicts(state_dict, model.state_dict())  # intersect
-        model.load_state_dict(state_dict, strict=True)  # load
+        model.load_state_dict(state_dict, strict=False)  # load
         print('Transferred %g/%g items from %s' % (len(state_dict), len(model.state_dict()), weights_path))  # report
 
     arch_changed = len(state_dict) != len(model.state_dict())
