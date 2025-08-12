@@ -7,5 +7,3 @@
 # python detect.py --weights /home/vision/danilowi/serious_mot/finn/notebooks/experiments/yolov8/best_yololit.pt --cfg /home/vision/danilowi/serious_mot/finn/notebooks/experiments/yolov8/yololit.yaml --source /media/vision/storage1/Datasets/UA_DETRAC/sorted/test --img-size 320 --name yololit --no-trace --conf-thres 0.2 --mot-format --nosave --classes 0 --view-img
 
 # python detect.py --weights runs/train/v8_float_3202/weights/best.pt --cfg runs/train/v8_float_3202/cfg.yaml --source /media/vision/1d6890f4-df75-4531-a044-f6d3d44d033d/Downloads/MOT17/train --img-size 320 --name v8_float_3202 --no-trace --conf-thres 0.2 --mot-format --nosave --classes 0 --view-img
-
-python detect.py --weights runs/train/quantyolov8_4w4a_a4_comact_fropt_frbn2/weights/best.pt --cfg runs/train/quantyolov8_4w4a_a4_comact_fropt_frbn2/cfg.yaml --source /media/vision/1d6890f4-df75-4531-a044-f6d3d44d033d/Downloads/MOT15/train --img-size 320 --name quantyolov8_4w4a_mot15_cl0  --classes 0 --no-trace --conf-thres 0.3 --mot-format --save-features
