@@ -43,7 +43,8 @@ def test(data,
          compute_loss=None,
          half_precision=False,
          is_coco=False,
-         v5_metric=False):
+         v5_metric=False,
+         is_train=False):
     
     # load testing configuration
     if isinstance(data, str):
@@ -269,32 +270,34 @@ def test(data,
     maps = np.zeros(nc) + map
     for i, c in enumerate(ap_class):
         maps[c] = ap[i]
-
-    fps_inference_only = 1000.0 / t[0] if t[0] > 0 else 0.0
-    fps_with_nms       = 1000.0 / t[2] if t[2] > 0 else 0.0
+ 
+    if not is_train:
     
-    dummy_input = torch.randn(1, 3, imgsz, imgsz).to(device)
-    macs, _ = profile(model, inputs=(dummy_input,), verbose=False)
+    	fps_inference_only = 1000.0 / t[0] if t[0] > 0 else 0.0
+    	fps_with_nms       = 1000.0 / t[2] if t[2] > 0 else 0.0
     
-    metrics_dict = {
-        "precision": float(mp),
-        "recall": float(mr),
-        "mAP@0.5": float(map50),
-        "mAP@0.5:0.95": float(map),
-        "speed_ms_inference": float(t[0]),
-        "speed_ms_nms": float(t[1]),
-        "speed_ms_total": float(t[2]),
-        "fps_inference_only": float(fps_inference_only),
-        "fps_with_nms": float(fps_with_nms),
-        "number_of_macs": float(macs),
-        "image_size": (imgsz, imgsz),
-        "batch_size": batch_size,
-        "per_class_map": {names[c]: float(ap[i]) for i, c in enumerate(ap_class)}
-    }
-    metrics_json_path = save_dir / "test_metrics.json"
-    with open(metrics_json_path, "w") as f:
-        json.dump(metrics_dict, f, indent=4)
-    print(f"Test metrics saved to {metrics_json_path}")
+    	dummy_input = torch.randn(1, 3, imgsz, imgsz).to(device)
+    	macs, _ = profile(model, inputs=(dummy_input,), verbose=False)
+    
+    	metrics_dict = {
+        	"precision": float(mp),
+        	"recall": float(mr),
+        	"mAP@0.5": float(map50),
+        	"mAP@0.5:0.95": float(map),
+        	"speed_ms_inference": float(t[0]),
+        	"speed_ms_nms": float(t[1]),
+        	"speed_ms_total": float(t[2]),
+        	"fps_inference_only": float(fps_inference_only),
+        	"fps_with_nms": float(fps_with_nms),
+        	"number_of_macs": float(macs),
+        	"image_size": (imgsz, imgsz),
+        	"batch_size": batch_size,
+        	"per_class_map": {names[c]: float(ap[i]) for i, c in enumerate(ap_class)}
+    	}
+    	metrics_json_path = save_dir / "test_metrics.json"
+    	with open(metrics_json_path, "w") as f:
+        	json.dump(metrics_dict, f, indent=4)
+    	print(f"Test metrics saved to {metrics_json_path}")
 
     return (mp, mr, map50, map, *(loss.cpu() / len(dataloader)).tolist()), maps, t
 

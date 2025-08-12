@@ -475,7 +475,7 @@ def train(hyp, opt, device, tb_writer=None):
                                                  batch_size=batch_size,
                                                  imgsz=imgsz_test,
                                                  model=ema.ema,
-                                                #  model=deepcopy(model.module if is_parallel(model) else model).eval(),
+                                                #model=deepcopy(model.module if is_parallel(model) else model).eval(),
                                                  single_cls=opt.single_cls,
                                                  dataloader=testloader,
                                                  save_dir=save_dir,
@@ -484,7 +484,8 @@ def train(hyp, opt, device, tb_writer=None):
                                                  wandb_logger=wandb_logger,
                                                  compute_loss=dedicated_loss or compute_loss,
                                                  is_coco=is_coco,
-                                                 v5_metric=opt.v5_metric)
+                                                 v5_metric=opt.v5_metric,
+                                                 is_train=True)
                 
             
 
@@ -569,7 +570,8 @@ def train(hyp, opt, device, tb_writer=None):
                                           save_json=True,
                                           plots=False,
                                           is_coco=is_coco,
-                                          v5_metric=opt.v5_metric)
+                                          v5_metric=opt.v5_metric,
+                                          is_train=True)
 
         # Strip optimizers
         final = best if best.exists() else last  # final model
