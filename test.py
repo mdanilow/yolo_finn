@@ -171,7 +171,6 @@ def test(data,
 
             # Append to pycocotools JSON dictionary
             if save_json:
-                # [{"image_id": 42, "category_id": 18, "bbox": [258.15, 41.29, 348.26, 243.78], "score": 0.236}, ...
                 image_id = int(path.stem) if path.stem.isnumeric() else path.stem
                 box = xyxy2xywh(predn[:, :4])  # xywh
                 box[:, :2] -= box[:, 2:] / 2  # xy center to top-left corner
@@ -186,69 +185,52 @@ def test(data,
             if nl:
                 detected = []  # target indices
                 tcls_tensor = labels[:, 0]
-
-                # target boxes
                 tbox = xywh2xyxy(labels[:, 1:5])
                 scale_coords(img[si].shape[1:], tbox, shapes[si][0], shapes[si][1])  # native-space labels
                 if plots:
                     confusion_matrix.process_batch(predn, torch.cat((labels[:, 0:1], tbox), 1))
-
-                # Per target class
                 for cls in torch.unique(tcls_tensor):
-                    ti = (cls == tcls_tensor).nonzero(as_tuple=False).view(-1)  # prediction indices
-                    pi = (cls == pred[:, 5]).nonzero(as_tuple=False).view(-1)  # target indices
-
-                    # Search for detections
+                    ti = (cls == tcls_tensor).nonzero(as_tuple=False).view(-1)
+                    pi = (cls == pred[:, 5]).nonzero(as_tuple=False).view(-1)
                     if pi.shape[0]:
-                        # Prediction to target ious
-                        ious, i = box_iou(predn[pi, :4], tbox[ti]).max(1)  # best ious, indices
-
-                        # Append detections
+                        ious, i = box_iou(predn[pi, :4], tbox[ti]).max(1)
                         detected_set = set()
                         for j in (ious > iouv[0]).nonzero(as_tuple=False):
-                            d = ti[i[j]]  # detected target
+                            d = ti[i[j]]
                             if d.item() not in detected_set:
                                 detected_set.add(d.item())
                                 detected.append(d)
-                                correct[pi[j]] = ious[j] > iouv  # iou_thres is 1xn
-                                if len(detected) == nl:  # all targets already located in image
+                                correct[pi[j]] = ious[j] > iouv
+                                if len(detected) == nl:
                                     break
-
-            # Append statistics (correct, conf, pcls, tcls)
             stats.append((correct.cpu(), pred[:, 4].cpu(), pred[:, 5].cpu(), tcls))
 
-        # Plot images
         if plots and batch_i < 3:
-            f = save_dir / f'test_batch{batch_i}_labels.jpg'  # labels
+            f = save_dir / f'test_batch{batch_i}_labels.jpg'
             Thread(target=plot_images, args=(img, targets, paths, f, names), daemon=True).start()
-            f = save_dir / f'test_batch{batch_i}_pred.jpg'  # predictions
+            f = save_dir / f'test_batch{batch_i}_pred.jpg'
             Thread(target=plot_images, args=(img, output_to_target(out), paths, f, names), daemon=True).start()
 
-    # Compute statistics
-    stats = [np.concatenate(x, 0) for x in zip(*stats)]  # to numpy
+    stats = [np.concatenate(x, 0) for x in zip(*stats)]
     if len(stats) and stats[0].any():
         p, r, ap, f1, ap_class = ap_per_class(*stats, plot=plots, v5_metric=v5_metric, save_dir=save_dir, names=names)
-        ap50, ap = ap[:, 0], ap.mean(1)  # AP@0.5, AP@0.5:0.95
+        ap50, ap = ap[:, 0], ap.mean(1)
         mp, mr, map50, map = p.mean(), r.mean(), ap50.mean(), ap.mean()
-        nt = np.bincount(stats[3].astype(np.int64), minlength=nc)  # number of targets per class
+        nt = np.bincount(stats[3].astype(np.int64), minlength=nc)
     else:
         nt = torch.zeros(1)
 
-    # Print results
-    pf = '%20s' + '%12i' * 2 + '%12.3g' * 4  # print format
+    pf = '%20s' + '%12i' * 2 + '%12.3g' * 4
     print(pf % ('all', seen, nt.sum(), mp, mr, map50, map))
 
-    # Print results per class
     if (verbose or (nc < 50 and not training)) and nc > 1 and len(stats):
         for i, c in enumerate(ap_class):
             print(pf % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap[i]))
 
-    # Print speeds
-    t = tuple(x / seen * 1E3 for x in (t0, t1, t0 + t1)) + (imgsz, imgsz, batch_size)  # tuple
+    t = tuple(x / seen * 1E3 for x in (t0, t1, t0 + t1)) + (imgsz, imgsz, batch_size)
     if not training:
         print('Speed: %.1f/%.1f/%.1f ms inference/NMS/total per %gx%g image at batch-size %g' % t)
 
-    # Plots
     if plots:
         confusion_matrix.plot(save_dir=save_dir, names=list(names.values()))
         if wandb_logger and wandb_logger.wandb:
@@ -257,39 +239,54 @@ def test(data,
     if wandb_images:
         wandb_logger.log({"Bounding Box Debugger/Images": wandb_images})
 
-    # Save JSON
     if save_json and len(jdict):
-        w = Path(weights[0] if isinstance(weights, list) else weights).stem if weights is not None else ''  # weights
-        anno_json = './coco/annotations/instances_val2017.json'  # annotations json
-        pred_json = str(save_dir / f"{w}_predictions.json")  # predictions json
+        w = Path(weights[0] if isinstance(weights, list) else weights).stem if weights is not None else ''
+        anno_json = './coco/annotations/instances_val2017.json'
+        pred_json = str(save_dir / f"{w}_predictions.json")
         print('\nEvaluating pycocotools mAP... saving %s...' % pred_json)
         with open(pred_json, 'w') as f:
             json.dump(jdict, f)
-
-        try:  # https://github.com/cocodataset/cocoapi/blob/master/PythonAPI/pycocoEvalDemo.ipynb
+        try:
             from pycocotools.coco import COCO
             from pycocotools.cocoeval import COCOeval
-
-            anno = COCO(anno_json)  # init annotations api
-            pred = anno.loadRes(pred_json)  # init predictions api
+            anno = COCO(anno_json)
+            pred = anno.loadRes(pred_json)
             eval = COCOeval(anno, pred, 'bbox')
             if is_coco:
-                eval.params.imgIds = [int(Path(x).stem) for x in dataloader.dataset.img_files]  # image IDs to evaluate
+                eval.params.imgIds = [int(Path(x).stem) for x in dataloader.dataset.img_files]
             eval.evaluate()
             eval.accumulate()
             eval.summarize()
-            map, map50 = eval.stats[:2]  # update results (mAP@0.5:0.95, mAP@0.5)
+            map, map50 = eval.stats[:2]
         except Exception as e:
             print(f'pycocotools unable to run: {e}')
 
-    # Return results
-    model.float()  # for training
+    model.float()
     if not training:
         s = f"\n{len(list(save_dir.glob('labels/*.txt')))} labels saved to {save_dir / 'labels'}" if save_txt else ''
         print(f"Results saved to {save_dir}{s}")
     maps = np.zeros(nc) + map
     for i, c in enumerate(ap_class):
         maps[c] = ap[i]
+
+    # ---------------- JSON METRICS SAVE ----------------
+    metrics_dict = {
+        "precision": float(mp),
+        "recall": float(mr),
+        "mAP@0.5": float(map50),
+        "mAP@0.5:0.95": float(map),
+        "speed_ms_inference": float(t[0]),
+        "speed_ms_nms": float(t[1]),
+        "speed_ms_total": float(t[2]),
+        "image_size": (imgsz, imgsz),
+        "batch_size": batch_size,
+        "per_class_map": {names[c]: float(ap[i]) for i, c in enumerate(ap_class)}
+    }
+    metrics_json_path = save_dir / "test_metrics.json"
+    with open(metrics_json_path, "w") as f:
+        json.dump(metrics_dict, f, indent=4)
+    print(f"Test metrics saved to {metrics_json_path}")
+
     return (mp, mr, map50, map, *(loss.cpu() / len(dataloader)).tolist()), maps, t
 
 
@@ -298,7 +295,6 @@ if __name__ == '__main__':
     parser.add_argument('--weights', nargs='+', type=str, default='yolov7.pt', help='model.pt path(s)')
     parser.add_argument('--cfg', type=str, default='', help='model.yaml path')
     parser.add_argument('--data', type=str, default='data/coco.yaml', help='*.data path')
-    # parser.add_argument('--hyp', type=str, default='data/hyp.scratch.p5.yaml', help='hyperparameters path')
     parser.add_argument('--batch-size', type=int, default=32, help='size of each image batch')
     parser.add_argument('--img-size', type=int, default=640, help='inference size (pixels)')
     parser.add_argument('--conf-thres', type=float, default=0.001, help='object confidence threshold')
@@ -321,10 +317,6 @@ if __name__ == '__main__':
     opt.data = check_file(opt.data)  # check file
     print(opt)
     #check_requirements()
-
-    # # Hyperparameters
-    # with open(opt.hyp) as f:
-    #     hyp = yaml.load(f, Loader=yaml.SafeLoader)  # load hyps
 
     if opt.task in ('train', 'val', 'test'):  # run normally
         test(opt.data,
