@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 from threading import Thread
+from thop import profile 
 
 import numpy as np
 import torch
@@ -269,7 +270,12 @@ def test(data,
     for i, c in enumerate(ap_class):
         maps[c] = ap[i]
 
-    # ---------------- JSON METRICS SAVE ----------------
+    fps_inference_only = 1000.0 / t[0] if t[0] > 0 else 0.0
+    fps_with_nms       = 1000.0 / t[2] if t[2] > 0 else 0.0
+    
+    dummy_input = torch.randn(1, 3, imgsz, imgsz).to(device)
+    macs, _ = profile(model, inputs=(dummy_input,), verbose=False)
+    
     metrics_dict = {
         "precision": float(mp),
         "recall": float(mr),
@@ -278,6 +284,9 @@ def test(data,
         "speed_ms_inference": float(t[0]),
         "speed_ms_nms": float(t[1]),
         "speed_ms_total": float(t[2]),
+        "fps_inference_only": float(fps_inference_only),
+        "fps_with_nms": float(fps_with_nms),
+        "number_of_macs": float(macs),
         "image_size": (imgsz, imgsz),
         "batch_size": batch_size,
         "per_class_map": {names[c]: float(ap[i]) for i, c in enumerate(ap_class)}
