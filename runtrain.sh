@@ -11,7 +11,11 @@
 
 
 # Suraj Experiments
-#python3 train.py --data data/data.yaml --cfg cfg/training/quantyolov8_8w8a.yaml --weights runs/train/yolov8n/train/yolo8n_train/weights/best.pt --hyp data/hyp_v8_finetune_lre3.yaml --name quantyolov8_8w8a --img-size 416 416 --fresh_ema --batch-size 32 --epochs 900 --device 0
+#python3 train.py --data data/data.yaml --cfg cfg/training/quantyolov8_8w8a.yaml --weights runs/train/yolov8n/train/yolo8n_train/weights/best.pt --hyp data/hyp_v8_finetune_lre3.yaml --name quantyolov8_8w8a_416 --img-size 416 416 --fresh_ema --batch-size 32 --epochs 900 --device 0
 
-python3 train.py --data data/data.yaml --cfg cfg/training/quantyolov8_8w8a.yaml --weights runs/train/yolov8n_hpd2_modified_augmented/train/yolo8n_train/weights/best.pt --hyp data/hyp_v8_finetune_lre3.yaml --name quantyolov8_8w8a_640 --img-size 640 640 --fresh_ema --batch-size 32 --epochs 900 --device 0
+#python3 train.py --data data/data.yaml --cfg cfg/training/quantyolov8_8w8a.yaml --weights runs/train/yolov8n_hpd2_modified_augmented/train/yolo8n_train/weights/best.pt --hyp data/hyp_v8_finetune_lre3.yaml --name quantyolov8_8w8a_640 --img-size 640 640 --fresh_ema --batch-size 32 --epochs 900 --device 0
+
+#python3 train.py --data data/data.yaml --cfg cfg/training/quantyolov8_8w8a.yaml --weights runs/train/yolov8n_hpd3_augmented_320/train/yolo8n_train/weights/best.pt --hyp data/hyp_v8_finetune_lre3.yaml --name quantyolov8_8w8a_320 --img-size 320 320 --fresh_ema --batch-size 32 --epochs 900 --device 0
+
+python3 train.py --data data/data.yaml --cfg cfg/training/quantyolov8_8w8a.yaml --weights runs/train/yolo8n_hpd2_modified_aug_640/weights/best.pt --hyp data/hyp_v8_finetune_lre3.yaml --name quantyolov8_8w8a_640_new --img-size 640 640 --fresh_ema --batch-size 32 --epochs 900 --device 0
 
