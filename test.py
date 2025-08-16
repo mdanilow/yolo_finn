@@ -272,7 +272,6 @@ def test(data,
         maps[c] = ap[i]
  
     if not is_train:
-    
     	dummy_input = torch.randn(1, 3, imgsz, imgsz).to(device)
     	macs, _ = profile(model, inputs=(dummy_input,), verbose=False)
     
