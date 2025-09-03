@@ -40,26 +40,6 @@ from utils.wandb_logging.wandb_utils import WandbLogger, check_wandb_resume
 logger = logging.getLogger(__name__)
 
 
-#def get_model(cfg_path, weights_path=None, num_classes=80, device='cpu', backbone_only=False, in_channels=3):
-#     weights_path = weights_path[0] if isinstance(weights_path, list) else weights_path
-#     ckpt = torch.load(weights_path, map_location=device)  # load checkpoint
-#     model = Model(cfg_path, ch=in_channels, nc=num_classes, backbone_only=backbone_only).to(device)  # create
-#     state_dict = ckpt['model']
-#    
-#     if list(state_dict.keys())[0].split('.')[0] == 'module':  #state dict saved from nn.DataParallel model
-#         final_dict = {}
-#         for k, v in state_dict.items():
-#             new_k = '.'.join(k.split('.')[1:])
-#             final_dict[new_k] = v
-#     	 state_dict = final_dict
-#     	 
-#     state_dict = intersect_dicts(state_dict, model.state_dict())  # intersect
-#     model.load_state_dict(state_dict, strict=False)  # load
-#     logger.info('Transferred %g/%g items from %s' % (len(state_dict), len(model.state_dict()), weights_path))  # report
-#
-#     return model.to(device), ckpt
-
-
 def train(hyp, opt, device, tb_writer=None):
     logger.info(colorstr('hyperparameters: ') + ', '.join(f'{k}={v}' for k, v in hyp.items()))
     save_dir, epochs, batch_size, total_batch_size, weights, rank, freeze = \
@@ -134,68 +114,14 @@ def train(hyp, opt, device, tb_writer=None):
 
     pg0, pg1, pg2 = [], [], []  # optimizer parameter groups
     for k, v in model.named_modules():
+        if opt.train_quant_scales and hasattr(v, 'scaling_impl') and hasattr(v.scaling_impl, 'value') and isinstance(v.scaling_impl.value, nn.Parameter):
+            pg1.append(v.scaling_impl.value)  # activation quantization scaling
         if hasattr(v, 'bias') and isinstance(v.bias, nn.Parameter):
             pg2.append(v.bias)  # biases
         if isinstance(v, nn.BatchNorm2d):
             pg0.append(v.weight)  # no decay
         elif hasattr(v, 'weight') and isinstance(v.weight, nn.Parameter):
             pg1.append(v.weight)  # apply decay
-        if hasattr(v, 'im'):
-            if hasattr(v.im, 'implicit'):           
-                pg0.append(v.im.implicit)
-            else:
-                for iv in v.im:
-                    pg0.append(iv.implicit)
-        if hasattr(v, 'imc'):
-            if hasattr(v.imc, 'implicit'):           
-                pg0.append(v.imc.implicit)
-            else:
-                for iv in v.imc:
-                    pg0.append(iv.implicit)
-        if hasattr(v, 'imb'):
-            if hasattr(v.imb, 'implicit'):           
-                pg0.append(v.imb.implicit)
-            else:
-                for iv in v.imb:
-                    pg0.append(iv.implicit)
-        if hasattr(v, 'imo'):
-            if hasattr(v.imo, 'implicit'):           
-                pg0.append(v.imo.implicit)
-            else:
-                for iv in v.imo:
-                    pg0.append(iv.implicit)
-        if hasattr(v, 'ia'):
-            if hasattr(v.ia, 'implicit'):           
-                pg0.append(v.ia.implicit)
-            else:
-                for iv in v.ia:
-                    pg0.append(iv.implicit)
-        if hasattr(v, 'attn'):
-            if hasattr(v.attn, 'logit_scale'):   
-                pg0.append(v.attn.logit_scale)
-            if hasattr(v.attn, 'q_bias'):   
-                pg0.append(v.attn.q_bias)
-            if hasattr(v.attn, 'v_bias'):  
-                pg0.append(v.attn.v_bias)
-            if hasattr(v.attn, 'relative_position_bias_table'):  
-                pg0.append(v.attn.relative_position_bias_table)
-        if hasattr(v, 'rbr_dense'):
-            if hasattr(v.rbr_dense, 'weight_rbr_origin'):  
-                pg0.append(v.rbr_dense.weight_rbr_origin)
-            if hasattr(v.rbr_dense, 'weight_rbr_avg_conv'): 
-                pg0.append(v.rbr_dense.weight_rbr_avg_conv)
-            if hasattr(v.rbr_dense, 'weight_rbr_pfir_conv'):  
-                pg0.append(v.rbr_dense.weight_rbr_pfir_conv)
-            if hasattr(v.rbr_dense, 'weight_rbr_1x1_kxk_idconv1'): 
-                pg0.append(v.rbr_dense.weight_rbr_1x1_kxk_idconv1)
-            if hasattr(v.rbr_dense, 'weight_rbr_1x1_kxk_conv2'):   
-                pg0.append(v.rbr_dense.weight_rbr_1x1_kxk_conv2)
-            if hasattr(v.rbr_dense, 'weight_rbr_gconv_dw'):   
-                pg0.append(v.rbr_dense.weight_rbr_gconv_dw)
-            if hasattr(v.rbr_dense, 'weight_rbr_gconv_pw'):   
-                pg0.append(v.rbr_dense.weight_rbr_gconv_pw)
-            if hasattr(v.rbr_dense, 'vector'):   
-                pg0.append(v.rbr_dense.vector)
 
     if opt.adam:
         optimizer = optim.Adam(pg0, lr=hyp['lr0'], betas=(hyp['momentum'], 0.999))  # adjust beta1 to momentum
@@ -215,7 +141,7 @@ def train(hyp, opt, device, tb_writer=None):
         lf = one_cycle(1, hyp['lrf'], epochs)  # cosine 1->hyp['lrf']
     scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lf)
     # plot_lr_scheduler(optimizer, scheduler, epochs, save_dir=save_dir)
-
+    
     # EMA
     ema = ModelEMA(model, average_quant_scales=opt.ema_average_quant_scales) if rank in [-1, 0] else None
 
@@ -529,7 +455,7 @@ def train(hyp, opt, device, tb_writer=None):
                 if best_fitness == fi:
                     torch.save(ckpt, best)
                     print('New best fitness!')
-                if (best_fitness == fi) and (epoch >= 200):
+                if (best_fitness == fi) and (epoch >= 20):
                     torch.save(ckpt, wdir / 'best_{:03d}.pt'.format(epoch))
                 if epoch == 0:
                     torch.save(ckpt, wdir / 'epoch_{:03d}.pt'.format(epoch))
@@ -634,6 +560,7 @@ if __name__ == '__main__':
     parser.add_argument('--init_from_ema', action='store_true', help='whether to load ema model to be trained')
     parser.add_argument('--freeze_bn_stats', action='store_true')
     parser.add_argument('--ema_average_quant_scales', action='store_true', help='whether to average quant activations scales in EMA')
+    parser.add_argument('--train_quant_scales', action='store_true')
     opt = parser.parse_args()
 
     # Set DDP variables

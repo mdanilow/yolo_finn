@@ -31,7 +31,7 @@ print(opt.input_shape)
 with open(opt.data) as f:
     data = yaml.load(f, Loader=yaml.SafeLoader)
     nc = int(data['nc'])
-    
+
 model, _, _ = get_model(opt.cfg, opt.weights, nc, load_ema=opt.load_ema)
 model = model.eval()
 
