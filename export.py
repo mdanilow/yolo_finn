@@ -1,38 +1,54 @@
+import argparse
+import yaml
 import torch
 
-import numpy as np
+from pathlib import Path
+from os.path import join
+
+from brevitas.export import export_qonnx
 from qonnx.core.modelwrapper import ModelWrapper
+from qonnx.util.cleanup import cleanup_model
+from qonnx.transformation.infer_shapes import InferShapes
 from qonnx.transformation.general import (
     GiveReadableTensorNames,
     GiveUniqueNodeNames,
 )
-from brevitas.export import export_qonnx
-from qonnx.transformation.infer_shapes import InferShapes
-from qonnx.core.onnx_exec import execute_onnx
 
 from models.yolo import get_model
+from models.finn_models import QuantV8Detect, QuantC2f, QuantDetect
 
 
+parser = argparse.ArgumentParser(prog='test.py')
+parser.add_argument('--weights', nargs='+', type=str, default='yolov7.pt', help='model.pt path(s)')
+parser.add_argument('--cfg', type=str, default='', help='model.yaml path')
+parser.add_argument('--data', type=str, default='data/coco.yaml', help='*.data path')
+parser.add_argument('--load_ema', action='store_true')
+parser.add_argument('--input_shape', nargs=2, type=int, help='input shape in HW format')
+opt = parser.parse_args()
 
-model_path = "runs/train/quantyolov8_8w8a_416/weights/best.pt"
-cfg = "runs/train/quantyolov8_8w8a_416/cfg.yaml"
+print(opt.input_shape)
 
-model, _, _ = get_model(cfg, model_path, 1, "cpu", load_ema=True)
-model.eval()
+with open(opt.data) as f:
+    data = yaml.load(f, Loader=yaml.SafeLoader)
+    nc = int(data['nc'])
+    
+model, _, _ = get_model(opt.cfg, opt.weights, nc, load_ema=opt.load_ema)
+model = model.eval()
 
-test_input = torch.zeros(1, 3, 416, 416).to("cpu").type_as(next(model.parameters()))
-input_dict = {"global_in": test_input.numpy().astype(np.float32) / 255.0}
+for m in model.modules():
+    if isinstance(m, QuantC2f):
+        m.forward = m.forward_split
+    if isinstance(m, QuantV8Detect) or isinstance(m, QuantDetect):
+        m.finn_export = True
 
-def execute_as_onnx(model, onnx_name):
-    qonnx_model = export_qonnx(model, test_input, onnx_name)
-    qonnx_model = ModelWrapper(onnx_name)
-    qonnx_model = qonnx_model.transform(InferShapes())
-    qonnx_model = qonnx_model.transform(GiveUniqueNodeNames())
-    qonnx_model = qonnx_model.transform(GiveReadableTensorNames())
-    qonnx_model.save(onnx_name)
-    output_dict = execute_onnx(qonnx_model, input_dict, return_full_exec_context=True)
-    return output_dict
+build_dir = Path(opt.cfg).parent
+exported_filename = str(build_dir / 'exported.onnx')
+onnx_model = export_qonnx(model, torch.rand(1, 3, opt.input_shape[0], opt.input_shape[1]), exported_filename)
 
-
-output_brevitas = model(test_input)
-output_dict = execute_as_onnx(model, 'model_{}.onnx'.format("cpu"))
+model = ModelWrapper(exported_filename)
+model = model.transform(InferShapes())
+model = model.transform(GiveUniqueNodeNames())
+model = model.transform(GiveReadableTensorNames())
+model = cleanup_model(model)
+model.save(exported_filename)
+print('Model exported as', exported_filename)
