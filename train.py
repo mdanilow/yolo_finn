@@ -159,6 +159,7 @@ def train(hyp, opt, device, tb_writer=None):
             print('WARNING: ignoring optimizer state from checkpoint')
             
         if opt.resume:
+            start_epoch = ckpt['epoch'] + 1
             best_fitness = ckpt['best_fitness']
             print('Best fitness:', best_fitness)
 
@@ -175,7 +176,6 @@ def train(hyp, opt, device, tb_writer=None):
             results_file.write_text(ckpt['training_results'])  # write results.txt
 
         # Epochs
-        start_epoch = ckpt['epoch'] + 1
         # if opt.resume:
         #     assert start_epoch > 0, '%s training to %g epochs is finished, nothing to resume.' % (weights, epochs)
         # if epochs < start_epoch:

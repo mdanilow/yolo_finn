@@ -41,6 +41,8 @@ def get_model(cfg_path, weights_path=None, num_classes=80, device='cpu', backbon
             state_dict = state_dict.state_dict()
         if bn_from_ema and ckpt.get('ema'):
             ema_state_dict = ckpt['ema']
+            if not isinstance(ema_state_dict, dict):
+                ema_state_dict = ema_state_dict.state_dict()
             for k, v in ema_state_dict.items():
                 if ('.bn.') in k:
                     state_dict[k] = v
