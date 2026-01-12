@@ -454,8 +454,11 @@ def train(hyp, opt, device, tb_writer=None):
 
             # Update best mAP
             fi = fitness(np.array(results).reshape(1, -1))  # weighted combination of [P, R, mAP@.5, mAP@.5-.95]
+            ema_fi = fitness(np.array(ema_results).reshape(1, -1))
             if fi > best_fitness:
                 best_fitness = fi
+            if ema_fi > best_fitness:
+                best_fitness = ema_fi
             wandb_logger.end_epoch(best_result=best_fitness == fi)
 
             # Save model
@@ -472,10 +475,10 @@ def train(hyp, opt, device, tb_writer=None):
 
                 # Save last, best and delete
                 torch.save(ckpt, last)
-                if best_fitness == fi:
+                if best_fitness == fi or best_fitness == ema_fi:
                     torch.save(ckpt, best)
                     print('New best fitness!')
-                if (best_fitness == fi) and (epoch >= 20):
+                if (best_fitness == fi or best_fitness == ema_fi) and (epoch >= 20):
                     torch.save(ckpt, wdir / 'best_{:03d}.pt'.format(epoch))
                 if epoch == 0:
                     torch.save(ckpt, wdir / 'epoch_{:03d}.pt'.format(epoch))
