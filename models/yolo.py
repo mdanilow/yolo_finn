@@ -28,7 +28,7 @@ from models.finn_models import *
 def get_model(cfg_path, weights_path=None, num_classes=80, device='cpu', backbone_only=False, in_channels=3, load_ema=False, bn_from_ema=False):
     weights_path = weights_path[0] if isinstance(weights_path, list) else weights_path
     model = Model(cfg_path, ch=in_channels, nc=num_classes, backbone_only=backbone_only).to(device)  # create
-    ckpt = torch.load(weights_path, map_location=device) if weights_path else None  # load checkpoint
+    ckpt = torch.load(weights_path, map_location=device, weights_only=False) if weights_path else None  # load checkpoint
     # state_dict = ckpt['model'].float().state_dict()  # to FP32
     if ckpt:
         if load_ema and ckpt.get('ema'):
