@@ -37,6 +37,7 @@ def test(data,
          save_txt=False,  # for auto-labelling
          save_hybrid=False,  # for hybrid auto-labelling
          save_conf=False,  # save auto-label confidences
+         save_map_to_dir="",
          plots=True,
          wandb_logger=None,
          compute_loss=None,
@@ -279,6 +280,10 @@ def test(data,
             eval.accumulate()
             eval.summarize()
             map, map50 = eval.stats[:2]  # update results (mAP@0.5:0.95, mAP@0.5)
+            if save_map_to_dir != "":
+                save_map_to_dir = Path(save_map_to_dir)
+                with open(save_map_to_dir / "cocoeval.txt", "w") as f:
+                    f.write(str(map))
         except Exception as e:
             print(f'pycocotools unable to run: {e}')
 
@@ -295,10 +300,10 @@ def test(data,
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog='test.py')
+    parser.add_argument('--model_dir', type=str, default='')
     parser.add_argument('--weights', nargs='+', type=str, default='yolov7.pt', help='model.pt path(s)')
     parser.add_argument('--cfg', type=str, default='', help='model.yaml path')
     parser.add_argument('--data', type=str, default='data/coco.yaml', help='*.data path')
-    # parser.add_argument('--hyp', type=str, default='data/hyp.scratch.p5.yaml', help='hyperparameters path')
     parser.add_argument('--batch-size', type=int, default=32, help='size of each image batch')
     parser.add_argument('--img-size', type=int, default=640, help='inference size (pixels)')
     parser.add_argument('--conf-thres', type=float, default=0.001, help='object confidence threshold')
@@ -323,9 +328,18 @@ if __name__ == '__main__':
     print(opt)
     #check_requirements()
 
-    # # Hyperparameters
-    # with open(opt.hyp) as f:
-    #     hyp = yaml.load(f, Loader=yaml.SafeLoader)  # load hyps
+    if opt.model_dir != "":
+        model_dir = Path(opt.model_dir)
+        opt.weights = model_dir / "weights" / "best.pt"
+        opt.cfg = model_dir / "cfg.yaml"
+        if os.path.exists(model_dir / "args.yaml"):
+            with open(model_dir / "args.yaml", "r") as f:
+                data = yaml.load(f, Loader=yaml.SafeLoader)
+                opt.img_size = data["imgsz"]
+        else:
+            with open(model_dir / "opt.yaml", "r") as f:
+                data = yaml.load(f, Loader=yaml.SafeLoader)
+                opt.img_size = data["img_size"][1]
 
     if opt.task in ('train', 'val', 'test'):  # run normally
         test(opt.data,
@@ -342,6 +356,7 @@ if __name__ == '__main__':
              save_txt=opt.save_txt | opt.save_hybrid,
              save_hybrid=opt.save_hybrid,
              save_conf=opt.save_conf,
+             save_map_to_dir=opt.model_dir,
              v5_metric=opt.v5_metric
              )
 
