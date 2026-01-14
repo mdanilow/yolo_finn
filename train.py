@@ -455,9 +455,9 @@ def train(hyp, opt, device, tb_writer=None):
             # Update best mAP
             fi = fitness(np.array(results).reshape(1, -1))  # weighted combination of [P, R, mAP@.5, mAP@.5-.95]
             ema_fi = fitness(np.array(ema_results).reshape(1, -1))
+            best_model = "regular"
             if fi > best_fitness:
                 best_fitness = fi
-                best_model = "regular"
             if ema_fi > best_fitness:
                 best_fitness = ema_fi
                 best_model = "ema"
