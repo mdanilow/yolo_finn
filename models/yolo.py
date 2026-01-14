@@ -33,10 +33,10 @@ def get_model(cfg_path, weights_path=None, num_classes=80, device='cpu', backbon
     if ckpt:
         if load_ema and ckpt.get('ema'):
             state_dict = ckpt['ema']
-            print('GET_MODEL: \'ema\' loaded')
+            print('GET_MODEL: \'ema\' loaded, epoch', ckpt["epoch"])
         else:
             state_dict = ckpt['model']
-            print('GET_MODEL: \'model\' loaded')
+            print('GET_MODEL: \'model\' loaded, epoch', ckpt["epoch"])
         if not isinstance(state_dict, dict):
             state_dict = state_dict.state_dict()
         if bn_from_ema and ckpt.get('ema'):

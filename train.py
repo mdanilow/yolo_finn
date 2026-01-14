@@ -457,8 +457,10 @@ def train(hyp, opt, device, tb_writer=None):
             ema_fi = fitness(np.array(ema_results).reshape(1, -1))
             if fi > best_fitness:
                 best_fitness = fi
+                best_model = "regular"
             if ema_fi > best_fitness:
                 best_fitness = ema_fi
+                best_model = "ema"
             wandb_logger.end_epoch(best_result=best_fitness == fi)
 
             # Save model
@@ -469,6 +471,7 @@ def train(hyp, opt, device, tb_writer=None):
                         # 'model': deepcopy(model.module if is_parallel(model) else model).half(),
                         'model': model.state_dict(),
                         'ema': ema.ema.state_dict() if use_ema else None,
+                        'best_model': best_model,
                         'updates': ema.updates,
                         'optimizer': optimizer.state_dict(),
                         'wandb_id': wandb_logger.wandb_run.id if wandb_logger.wandb else None}
