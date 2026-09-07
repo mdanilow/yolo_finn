@@ -308,6 +308,9 @@ class ModelEMA:
                     v = v.to(self.device)
                     v *= scale
                     v += (1. - scale) * msd[k].detach()
+                else:
+                    # int parameters like num_batches_tracked for quant training - just copy
+                    v = msd[k].to(self.device)
             for k, v in msd.items():
                 if k not in ema_msd:
                     new_keys = True

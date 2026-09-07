@@ -233,15 +233,6 @@ def train(hyp, opt, device, tb_writer=None):
             # Anchors
             if not opt.noautoanchor:
                 check_anchors(dataset, model=model, thr=hyp['anchor_t'], imgsz=imgsz)
-            # model.half().float()  # pre-reduce anchor precision
-            # m = model.module.model[-1] if hasattr(model, 'module') else model.model[-1]  # Detect()
-            # print('NEW ANCHORS:', m.anchors.shape, m.anchors.cpu()*m.stride.view(-1, 1, 1))
-            # # update local config file in the output dir with new anchors
-            # with open(opt.cfg) as f:
-            #     config_dict = yaml.load(f, Loader=yaml.SafeLoader)
-            # print('OLD ANCHORS:', config_dict['anchors'].shape, config_dict['anchors'])
-            # with open(join(save_dir, os.path.basename(opt.cfg).split('.')[0] + '.json'), 'w') as f:
-            #     # yaml.dump(config_dict, f, default_flow_style=False)
 
 
     # DDP mode
@@ -251,9 +242,9 @@ def train(hyp, opt, device, tb_writer=None):
                     find_unused_parameters=any(isinstance(layer, nn.MultiheadAttention) for layer in model.modules()))
 
     # Model parameters
-    hyp['box'] *= 3. / nl  # scale to layers
-    hyp['cls'] *= nc / 80. * 3. / nl  # scale to classes and layers
-    hyp['obj'] *= (imgsz / 640) ** 2 * 3. / nl  # scale to image size and layers
+    # hyp['box'] *= 3. / nl  # scale to layers
+    # hyp['cls'] *= nc / 80. * 3. / nl  # scale to classes and layers
+    # hyp['obj'] *= (imgsz / 640) ** 2 * 3. / nl  # scale to image size and layers
     hyp['label_smoothing'] = opt.label_smoothing
     model.nc = nc  # attach number of classes to model
     model.hyp = hyp  # attach hyperparameters to model
