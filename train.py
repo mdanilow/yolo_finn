@@ -115,10 +115,10 @@ def train(hyp, opt, device, tb_writer=None):
     hyp['weight_decay'] *= total_batch_size * accumulate / nbs  # scale weight_decay
     logger.info(f"Scaled weight_decay = {hyp['weight_decay']}")
 
-    pg0, pg1, pg2 = [], [], []  # optimizer parameter groups
+    pg0, pg1, pg2, pg3 = [], [], [], []  # optimizer parameter groups
     for k, v in model.named_modules():
         if opt.train_quant_scales and hasattr(v, 'scaling_impl') and hasattr(v.scaling_impl, 'value') and isinstance(v.scaling_impl.value, nn.Parameter):
-            pg1.append(v.scaling_impl.value)  # activation quantization scaling
+            pg3.append(v.scaling_impl.value)  # activation quantization scales
         if hasattr(v, 'bias') and isinstance(v.bias, nn.Parameter):
             pg2.append(v.bias)  # biases
         if isinstance(v, nn.BatchNorm2d):
@@ -133,8 +133,9 @@ def train(hyp, opt, device, tb_writer=None):
 
     optimizer.add_param_group({'params': pg1, 'weight_decay': hyp['weight_decay']})  # add pg1 with weight_decay
     optimizer.add_param_group({'params': pg2})  # add pg2 (biases)
-    logger.info('Optimizer groups: %g .bias, %g conv.weight, %g other' % (len(pg2), len(pg1), len(pg0)))
-    del pg0, pg1, pg2
+    optimizer.add_param_group({'params': pg3})  # add quant scales
+    logger.info('Optimizer groups: %g .bias, %g conv.weight, %g quant scales, %g other' % (len(pg2), len(pg1), len(pg3), len(pg0)))
+    del pg0, pg1, pg2, pg3
 
     # Scheduler https://arxiv.org/pdf/1812.01187.pdf
     # https://pytorch.org/docs/stable/_modules/torch/optim/lr_scheduler.html#OneCycleLR
@@ -302,7 +303,7 @@ def train(hyp, opt, device, tb_writer=None):
         if rank != -1:
             dataloader.sampler.set_epoch(epoch)
         pbar = enumerate(dataloader)
-        logger.info(('\n' + '%10s' * 7) % ('Epoch', 'gpu_mem', 'box', 'cls', 'dfl', 'labels', 'img_size'))
+        logger.info(('\n' + '%14s' * 7) % ('Epoch', 'gpu_mem', 'box', 'cls', 'dfl', 'labels', 'img_size'))
         if rank in [-1, 0]:
             pbar = tqdm(pbar, total=nb)  # progress bar
         optimizer.zero_grad()
@@ -331,19 +332,19 @@ def train(hyp, opt, device, tb_writer=None):
                     imgs = F.interpolate(imgs, size=ns, mode='bilinear', align_corners=False)
 
             # Forward
-            with amp.autocast(enabled=cuda):
-                pred = model(imgs)  # forward
-                if dedicated_loss is not None:
-                    loss, loss_items = dedicated_loss(pred, targets.to(device))
+            # with amp.autocast(enabled=cuda):
+            pred = model(imgs)  # forward
+            if dedicated_loss is not None:
+                loss, loss_items = dedicated_loss(pred, targets.to(device))
+            else:
+                if 'loss_ota' not in hyp or hyp['loss_ota'] == 1:
+                    loss, loss_items = compute_loss_ota(pred, targets.to(device), imgs)  # loss scaled by batch_size
                 else:
-                    if 'loss_ota' not in hyp or hyp['loss_ota'] == 1:
-                        loss, loss_items = compute_loss_ota(pred, targets.to(device), imgs)  # loss scaled by batch_size
-                    else:
-                        loss, loss_items = compute_loss(pred, targets.to(device))  # loss scaled by batch_size
-                if rank != -1:
-                    loss *= opt.world_size  # gradient averaged between devices in DDP mode
-                if opt.quad:
-                    loss *= 4.
+                    loss, loss_items = compute_loss(pred, targets.to(device))  # loss scaled by batch_size
+            if rank != -1:
+                loss *= opt.world_size  # gradient averaged between devices in DDP mode
+            if opt.quad:
+                loss *= 4.
 
             # Backward
             scaler.scale(loss).backward()
