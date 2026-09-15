@@ -5,6 +5,7 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
 
 from utils.general import bbox_iou, bbox_alpha_iou, box_iou, box_giou, box_diou, box_ciou, xywh2xyxy
 from utils.torch_utils import is_parallel
@@ -1862,7 +1863,7 @@ class v8DetectionLoss:
             # pred_dist = (pred_dist.view(b, a, c // 4, 4).softmax(2) * self.proj.type(pred_dist.dtype).view(1, 1, -1, 1)).sum(2)
         return dist2bbox(pred_dist, anchor_points, xywh=False)
 
-    def __call__(self, preds, targets):
+    def __call__(self, preds, targets, teacher_pred=None, student_tensors=None, teacher_tensors=None):
         """Calculate the sum of the loss for box, cls and dfl multiplied by batch size."""
         loss = torch.zeros(3, device=self.device)  # box, cls, dfl
         feats = preds[1] if isinstance(preds, tuple) else preds
@@ -1897,10 +1898,10 @@ class v8DetectionLoss:
         )
 
         target_scores_sum = max(target_scores.sum(), 1)
-
         # Cls loss
         # loss[1] = self.varifocal_loss(pred_scores, target_scores, target_labels) / target_scores_sum  # VFL way
         loss[1] = self.bce(pred_scores, target_scores.to(dtype)).sum() / target_scores_sum  # BCE
+        # print("cls loss shape:", loss[1], loss[1].shape, pred_scores.shape, target_scores.shape)
 
         # Bbox loss
         if fg_mask.sum():
@@ -1908,6 +1909,31 @@ class v8DetectionLoss:
             loss[0], loss[2] = self.bbox_loss(
                 pred_distri, pred_bboxes, anchor_points, target_bboxes, target_scores, target_scores_sum, fg_mask
             )
+
+        # print("target_bboxes", target_bboxes.shape, pred_bboxes.shape, gt_labels.shape, gt_bboxes.shape, mask_gt.shape, fg_mask.shape, fg_mask.sum())
+
+        # distillation loss
+        if teacher_pred is not None:
+            # cls
+            teacher_feats = teacher_pred[1] if isinstance(teacher_pred, tuple) else teacher_pred
+            teacher_pred_distri, teacher_pred_scores = torch.cat([xi.view(teacher_feats[0].shape[0], self.no, -1) for xi in teacher_feats], 2).split(
+                (self.reg_max * 4, self.nc), 1
+            )
+            teacher_pred_scores = teacher_pred_scores.permute(0, 2, 1).contiguous()
+            # teacher_scores_sum = max(teacher_pred_scores.sum(), 1)
+            kd_cls_loss = self.bce(pred_scores, teacher_pred_scores.sigmoid()).sum() / target_scores_sum
+            # print("kd cls loss shape", kd_cls_loss, kd_cls_loss.shape, pred_scores.shape, teacher_pred_scores.sigmoid().shape)
+
+            # box
+            teacher_pred_distri = teacher_pred_distri.permute(0, 2, 1).contiguous()
+            teacher_pred_distri = teacher_pred_distri.reshape(*teacher_pred_distri.shape[:-1], 4, -1)
+            pred_distri = pred_distri.reshape(*pred_distri.shape[:-1], 4, -1)
+            kd_dfl_loss = self.bce(pred_distri[fg_mask], teacher_pred_distri[fg_mask].sigmoid()).sum() / target_scores_sum
+            # print("dfl loss shape:", kd_dfl_loss, kd_dfl_loss.shape)
+            # print('box, dfl losses:', loss[0], loss[2])
+
+            # intermediate tensors, L2 loss?
+
 
         loss[0] *= self.hyp['box']  # box gain
         loss[1] *= self.hyp['cls']  # cls gain

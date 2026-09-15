@@ -286,6 +286,7 @@ class ModelEMA:
         self.device = next(model.parameters()).device
         self.updates = updates  # number of EMA updates
         self.decay = lambda x: decay * (1 - math.exp(-x / 2000))  # decay exponential ramp (to help early epochs)
+        # self.decay = lambda x: 0
         self.overwrite_quant_scales = not average_quant_scales
         for p in self.ema.parameters():
             p.requires_grad_(False)

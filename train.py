@@ -9,6 +9,7 @@ from pathlib import Path
 from threading import Thread
 import shutil
 from os.path import join
+import sys
 
 import numpy as np
 import torch.distributed as dist
@@ -46,6 +47,7 @@ def train(hyp, opt, device, tb_writer=None):
     save_dir, epochs, batch_size, total_batch_size, weights, rank, freeze = \
         Path(opt.save_dir), opt.epochs, opt.batch_size, opt.total_batch_size, opt.weights, opt.global_rank, opt.freeze
     use_ema = not opt.no_ema
+    kd_training = opt.kd_teacher_weights != ""
 
     # Directories
     wdir = save_dir / 'weights'
@@ -99,6 +101,21 @@ def train(hyp, opt, device, tb_writer=None):
         check_dataset(data_dict)  # check
     train_path = data_dict['train']
     test_path = data_dict['val']
+
+    # Knowledge distillation teacher
+    if kd_training:
+        print("USING KNOWLEDGE DISTILLATION TEACHER:", opt.kd_teacher_cfg, opt.kd_teacher_weights)
+        teacher_model, _, _ = get_model(opt.kd_teacher_cfg, opt.kd_teacher_weights, nc, device)
+        teacher_model.eval()
+        for p in teacher_model.parameters():
+            p.requires_grad_(False)
+        if opt.kd_intermediate_tensors != []:
+            model.features_to_save = opt.kd_intermediate_tensors
+            teacher_model.features_to_save = opt.kd_intermediate_tensors
+        else:
+            print("ERROR, kd_intermediate_tensors not given")
+            sys.exit()
+
 
     # Freeze
     freeze = [f'model.{x}.' for x in (freeze if len(freeze) > 1 else range(freeze[0]))]  # parameter names to freeze (full or partial)
@@ -243,9 +260,6 @@ def train(hyp, opt, device, tb_writer=None):
                     find_unused_parameters=any(isinstance(layer, nn.MultiheadAttention) for layer in model.modules()))
 
     # Model parameters
-    # hyp['box'] *= 3. / nl  # scale to layers
-    # hyp['cls'] *= nc / 80. * 3. / nl  # scale to classes and layers
-    # hyp['obj'] *= (imgsz / 640) ** 2 * 3. / nl  # scale to image size and layers
     hyp['label_smoothing'] = opt.label_smoothing
     model.nc = nc  # attach number of classes to model
     model.hyp = hyp  # attach hyperparameters to model
@@ -264,7 +278,7 @@ def train(hyp, opt, device, tb_writer=None):
     dedicated_loss = None
     last_layer = model.module.model[-1] if hasattr(model, 'module') else model.model[-1] 
     if hasattr(last_layer, 'dedicated_loss'):
-        dedicated_loss = last_layer.dedicated_loss(model)
+        compute_loss = last_layer.dedicated_loss(model)
     else:
         compute_loss_ota = ComputeLossOTA(model)  # init loss class
         compute_loss = ComputeLoss(model)  # init loss class
@@ -331,11 +345,15 @@ def train(hyp, opt, device, tb_writer=None):
                     ns = [math.ceil(x * sf / gs) * gs for x in imgs.shape[2:]]  # new shape (stretched to gs-multiple)
                     imgs = F.interpolate(imgs, size=ns, mode='bilinear', align_corners=False)
 
-            # Forward
+            # Forward and loss
             # with amp.autocast(enabled=cuda):
             pred = model(imgs)  # forward
-            if dedicated_loss is not None:
-                loss, loss_items = dedicated_loss(pred, targets.to(device))
+            if kd_training:
+                with torch.no_grad():
+                    teacher_pred = teacher_model(imgs)
+                loss, loss_items = compute_loss(pred, targets.to(device), teacher_pred,
+                                                student_tensors=model.saved_features,
+                                                teacher_tensors=teacher_model.saved_features)
             else:
                 if 'loss_ota' not in hyp or hyp['loss_ota'] == 1:
                     loss, loss_items = compute_loss_ota(pred, targets.to(device), imgs)  # loss scaled by batch_size
@@ -377,7 +395,6 @@ def train(hyp, opt, device, tb_writer=None):
                                                   save_dir.glob('train*.jpg') if x.exists()]})
                     
             # end batch ------------------------------------------------------------------------------------------------
-        # end epoch ----------------------------------------------------------------------------------------------------
 
         # Scheduler
         lr = [x['lr'] for x in optimizer.param_groups]  # for tensorboard
@@ -538,6 +555,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--weights', type=str, default='', help='initial weights path')
     parser.add_argument('--cfg', type=str, default='', help='model.yaml path')
+    parser.add_argument('--kd_teacher_weights', type=str, default='', help='teacher weights path for knowledge distillation training')
+    parser.add_argument('--kd_teacher_cfg', type=str, default='', help='model.yaml path of the teacher model for knowledge distillation training')
+    parser.add_argument('--kd_intermediate_tensors', nargs='+', default=[], help='indexes of intermediate tensors to be used during distillation, overwrites features_to_save in cfg yaml')
     parser.add_argument('--data', type=str, default='data/coco.yaml', help='data.yaml path')
     parser.add_argument('--hyp', type=str, default='data/hyp.scratch.p5.yaml', help='hyperparameters path')
     parser.add_argument('--epochs', type=int, default=300)
