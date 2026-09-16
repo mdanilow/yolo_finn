@@ -1901,7 +1901,6 @@ class v8DetectionLoss:
         # Cls loss
         # loss[1] = self.varifocal_loss(pred_scores, target_scores, target_labels) / target_scores_sum  # VFL way
         loss[1] = self.bce(pred_scores, target_scores.to(dtype)).sum() / target_scores_sum  # BCE
-        # print("cls loss shape:", loss[1], loss[1].shape, pred_scores.shape, target_scores.shape)
 
         # Bbox loss
         if fg_mask.sum():
@@ -1909,8 +1908,6 @@ class v8DetectionLoss:
             loss[0], loss[2] = self.bbox_loss(
                 pred_distri, pred_bboxes, anchor_points, target_bboxes, target_scores, target_scores_sum, fg_mask
             )
-
-        # print("target_bboxes", target_bboxes.shape, pred_bboxes.shape, gt_labels.shape, gt_bboxes.shape, mask_gt.shape, fg_mask.shape, fg_mask.sum())
 
         # distillation loss
         if teacher_pred is not None:
@@ -1922,18 +1919,30 @@ class v8DetectionLoss:
             teacher_pred_scores = teacher_pred_scores.permute(0, 2, 1).contiguous()
             # teacher_scores_sum = max(teacher_pred_scores.sum(), 1)
             kd_cls_loss = self.bce(pred_scores, teacher_pred_scores.sigmoid()).sum() / target_scores_sum
-            # print("kd cls loss shape", kd_cls_loss, kd_cls_loss.shape, pred_scores.shape, teacher_pred_scores.sigmoid().shape)
 
             # box
             teacher_pred_distri = teacher_pred_distri.permute(0, 2, 1).contiguous()
-            teacher_pred_distri = teacher_pred_distri.reshape(*teacher_pred_distri.shape[:-1], 4, -1)
-            pred_distri = pred_distri.reshape(*pred_distri.shape[:-1], 4, -1)
-            kd_dfl_loss = self.bce(pred_distri[fg_mask], teacher_pred_distri[fg_mask].sigmoid()).sum() / target_scores_sum
-            # print("dfl loss shape:", kd_dfl_loss, kd_dfl_loss.shape)
-            # print('box, dfl losses:', loss[0], loss[2])
+            teacher_pred_distri = teacher_pred_distri.reshape(*teacher_pred_distri.shape[:-1], 4, -1)[fg_mask]
+            teacher_pred_distri = nn.Softmax(dim=-1)(teacher_pred_distri)
+            pred_distri = pred_distri.reshape(*pred_distri.shape[:-1], 4, -1)[fg_mask]
+            pred_distri = nn.LogSoftmax(dim=-1)(pred_distri)
+            # kd_dfl_loss = self.bce(pred_distri[fg_mask], teacher_pred_distri[fg_mask].sigmoid()).sum() / target_scores_sum
+            kd_dfl_loss = F.kl_div(pred_distri, teacher_pred_distri, reduction="none").sum(-1).mean(-1).sum() / target_scores_sum
 
-            # intermediate tensors, L2 loss?
+            # intermediate tensors, L2 loss
+            kd_intermediate_loss = []
+            for s, t in zip(student_tensors, teacher_tensors):
+                t = t.detach()
+                assert s.shape == t.shape, f"shape mismatch {s.shape} vs {t.shape} — topology should match"
+                s_n = s / (s.norm(p=2, dim=1, keepdim=True) + 1e-6)
+                t_n = t / (t.norm(p=2, dim=1, keepdim=True) + 1e-6)
+                kd_intermediate_loss.append(F.mse_loss(s_n, t_n))
+            kd_intermediate_loss = torch.stack(kd_intermediate_loss).mean()
 
+            loss = torch.cat([loss, torch.stack([kd_cls_loss, kd_dfl_loss, kd_intermediate_loss])])
+            loss[3] *= self.hyp['kd_cls']
+            loss[4] *= self.hyp['kd_dfl']
+            loss[5] *= self.hyp['kd_int']
 
         loss[0] *= self.hyp['box']  # box gain
         loss[1] *= self.hyp['cls']  # cls gain

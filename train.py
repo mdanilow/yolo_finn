@@ -110,8 +110,9 @@ def train(hyp, opt, device, tb_writer=None):
         for p in teacher_model.parameters():
             p.requires_grad_(False)
         if opt.kd_intermediate_tensors != []:
-            model.features_to_save = opt.kd_intermediate_tensors
-            teacher_model.features_to_save = opt.kd_intermediate_tensors
+            kd_intermediate_tensors = [int(x) for x in opt.kd_intermediate_tensors]
+            model.features_to_save = kd_intermediate_tensors
+            teacher_model.features_to_save = kd_intermediate_tensors
         else:
             print("ERROR, kd_intermediate_tensors not given")
             sys.exit()
@@ -354,6 +355,8 @@ def train(hyp, opt, device, tb_writer=None):
                 loss, loss_items = compute_loss(pred, targets.to(device), teacher_pred,
                                                 student_tensors=model.saved_features,
                                                 teacher_tensors=teacher_model.saved_features)
+                model.saved_features = []
+                teacher_model.saved_features = []
             else:
                 if 'loss_ota' not in hyp or hyp['loss_ota'] == 1:
                     loss, loss_items = compute_loss_ota(pred, targets.to(device), imgs)  # loss scaled by batch_size
@@ -557,7 +560,7 @@ if __name__ == '__main__':
     parser.add_argument('--cfg', type=str, default='', help='model.yaml path')
     parser.add_argument('--kd_teacher_weights', type=str, default='', help='teacher weights path for knowledge distillation training')
     parser.add_argument('--kd_teacher_cfg', type=str, default='', help='model.yaml path of the teacher model for knowledge distillation training')
-    parser.add_argument('--kd_intermediate_tensors', nargs='+', default=[], help='indexes of intermediate tensors to be used during distillation, overwrites features_to_save in cfg yaml')
+    parser.add_argument('--kd_intermediate_tensors', type=int, nargs='+', default=[], help='indexes of intermediate tensors to be used during distillation, overwrites features_to_save in cfg yaml')
     parser.add_argument('--data', type=str, default='data/coco.yaml', help='data.yaml path')
     parser.add_argument('--hyp', type=str, default='data/hyp.scratch.p5.yaml', help='hyperparameters path')
     parser.add_argument('--epochs', type=int, default=300)
