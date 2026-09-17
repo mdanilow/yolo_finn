@@ -31,7 +31,7 @@ from models.yolo import Model, get_model
 from utils.autoanchor import check_anchors
 from utils.datasets import create_dataloader
 from utils.general import labels_to_class_weights, increment_path, labels_to_image_weights, init_seeds, \
-    fitness, strip_optimizer, get_latest_run, check_dataset, check_file, check_git_status, check_img_size, \
+    fitness, strip_optimizer, get_latest_run, check_dataset, check_file, get_hash_from_git_folder, write_git_info, check_img_size, \
     check_requirements, print_mutation, set_logging, one_cycle, colorstr
 from utils.google_utils import attempt_download
 from utils.loss import ComputeLoss, ComputeLossOTA, v8DetectionLoss
@@ -495,7 +495,8 @@ def train(hyp, opt, device, tb_writer=None):
                         'best_model': best_model,
                         'updates': ema.updates,
                         'optimizer': optimizer.state_dict(),
-                        'wandb_id': wandb_logger.wandb_run.id if wandb_logger.wandb else None}
+                        'wandb_id': wandb_logger.wandb_run.id if wandb_logger.wandb else None,
+                        'git_commit': get_hash_from_git_folder()}
 
                 # Save last, best and delete
                 torch.save(ckpt, last)
@@ -515,6 +516,7 @@ def train(hyp, opt, device, tb_writer=None):
                         wandb_logger.log_model(
                             last.parent, opt, epoch, fi, best_model=best_fitness == fi)
                 del ckpt
+                write_git_info(save_dir / "git_info.txt")
             
             if plots:
                 plot_results(save_dir=save_dir, header=True, plot_ema=use_ema, kd_training=kd_training)  # save as results.png

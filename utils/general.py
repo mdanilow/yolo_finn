@@ -91,6 +91,48 @@ def check_git_status():
         print(e)
 
 
+def get_hash_from_git_folder():
+    git_dir = os.path.join(os.getcwd(), '.git')
+    head_path = os.path.join(git_dir, 'HEAD')
+    
+    if not os.path.isfile(head_path):
+        return "unknown"
+        
+    with open(head_path, 'r') as f:
+        ref = f.read().strip()
+        
+    # If detached HEAD, it directly contains the hash
+    if not ref.startswith('ref:'):
+        return ref
+        
+    # If on a branch, follow the reference to the actual hash file
+    ref_path = ref.split(' ')[1]
+    branch_file = os.path.join(git_dir, ref_path)
+    
+    if not os.path.isfile(branch_file):
+        return "unknown"
+        
+    with open(branch_file, 'r') as f:
+        return f.read().strip()
+
+
+def write_git_info(path):
+
+    if os.path.exists(path):
+        with open(path, "r+") as file:
+            current_hash = get_hash_from_git_folder()
+            lines = file.readlines()
+            if len(lines) == 0:
+                file.write(current_hash + "\n")
+            else:
+                git_hash = lines[-1].strip()
+                if git_hash != current_hash:
+                    file.write(current_hash + "\n")
+    else:
+        with open(path, "w") as file:
+            file.write("start: " + get_hash_from_git_folder() + "\n")
+
+
 def check_requirements(requirements='requirements.txt', exclude=()):
     # Check installed dependencies meet requirements (pass *.txt file or list of packages)
     import pkg_resources as pkg
