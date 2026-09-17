@@ -203,8 +203,10 @@ def train(hyp, opt, device, tb_writer=None):
         #     epochs += ckpt['epoch']  # finetune additional epochs
 
         del ckpt
-    else:
-        RESULTS_TAGS = ('Epoch', 'gpu_mem', 'box', 'cls', 'dfl', 'labels', 'img_size', 'MP', 'MR', 'mAP50', 'mAP', 'box_val', 'obj_val', 'cls_val', 'ema_MP', 'ema_MR', 'ema_mAP50', 'ema_mAP', 'ema_box_val', 'ema_obj_val', 'ema_cls_val', 'lr0', 'lr1', 'lr2')
+    if not opt.resume:
+        RESULTS_TAGS = ('Epoch', 'gpu_mem', 'box', 'cls', 'dfl') \
+            + (('kd_cls', 'kd_dfl', 'kd_int') if kd_training else ()) \
+            + ('labels', 'img_size', 'MP', 'MR', 'mAP50', 'mAP', 'box_val', 'obj_val', 'cls_val', 'ema_MP', 'ema_MR', 'ema_mAP50', 'ema_mAP', 'ema_box_val', 'ema_obj_val', 'ema_cls_val', 'lr0', 'lr1', 'lr2')
         header = '%14s' * len(RESULTS_TAGS) % RESULTS_TAGS
         results_file.write_text(header + '\n')
 
@@ -314,11 +316,14 @@ def train(hyp, opt, device, tb_writer=None):
         # b = int(random.uniform(0.25 * imgsz, 0.75 * imgsz + gs) // gs * gs)
         # dataset.mosaic_border = [b - imgsz, -b]  # height, width borders
 
-        mloss = torch.zeros(3, device=device)  # mean losses
+        mloss = torch.zeros(6 if kd_training else 3, device=device)  # mean losses
         if rank != -1:
             dataloader.sampler.set_epoch(epoch)
         pbar = enumerate(dataloader)
-        logger.info(('\n' + '%14s' * 7) % ('Epoch', 'gpu_mem', 'box', 'cls', 'dfl', 'labels', 'img_size'))
+        if kd_training:
+            logger.info(('\n' + '%14s' * 10) % ('Epoch', 'gpu_mem', 'box', 'cls', 'dfl', 'kd_cls', 'kd_dfl', 'kd_int', 'labels', 'img_size'))
+        else:
+            logger.info(('\n' + '%14s' * 7) % ('Epoch', 'gpu_mem', 'box', 'cls', 'dfl', 'labels', 'img_size'))
         if rank in [-1, 0]:
             pbar = tqdm(pbar, total=nb)  # progress bar
         optimizer.zero_grad()
@@ -380,10 +385,14 @@ def train(hyp, opt, device, tb_writer=None):
 
             # Print
             if rank in [-1, 0]:
-                mloss = (mloss * i + loss_items[:3]) / (i + 1)  # update mean losses
+                mloss = (mloss * i + loss_items[:len(mloss)]) / (i + 1)  # update mean losses
                 mem = '%.3gG' % (torch.cuda.memory_reserved() / 1E9 if torch.cuda.is_available() else 0)  # (GB)
-                s = ('%14s' * 2 + '%14.4g' * 5) % (
-                    '%g/%g' % (epoch, epochs - 1), mem, *mloss, targets.shape[0], imgs.shape[-1])
+                if kd_training:
+                    s = ('%14s' * 2 + '%14.4g' * 8) % (
+                        '%g/%g' % (epoch, epochs - 1), mem, *mloss, targets.shape[0], imgs.shape[-1])
+                else:
+                    s = ('%14s' * 2 + '%14.4g' * 5) % (
+                        '%g/%g' % (epoch, epochs - 1), mem, *mloss, targets.shape[0], imgs.shape[-1])
                 pbar.set_description(s)
 
                 # Plot
@@ -508,7 +517,7 @@ def train(hyp, opt, device, tb_writer=None):
                 del ckpt
             
             if plots:
-                plot_results(save_dir=save_dir, header=True, plot_ema=use_ema)  # save as results.png
+                plot_results(save_dir=save_dir, header=True, plot_ema=use_ema, kd_training=kd_training)  # save as results.png
         # end epoch ----------------------------------------------------------------------------------------------------
     # end training
     if rank in [-1, 0]:
