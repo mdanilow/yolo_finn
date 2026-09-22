@@ -1829,6 +1829,7 @@ class v8DetectionLoss:
         self.no = m.nc + m.reg_max * 4
         self.reg_max = m.reg_max
         self.device = device
+        self.tau = h.get('kd_tau', 1.0) # temperature scaling for knowledge distillation
 
         self.use_dfl = m.reg_max > 1
 
@@ -1923,21 +1924,24 @@ class v8DetectionLoss:
             # box
             teacher_pred_distri = teacher_pred_distri.permute(0, 2, 1).contiguous()
             teacher_pred_distri = teacher_pred_distri.reshape(*teacher_pred_distri.shape[:-1], 4, -1)[fg_mask]
-            teacher_pred_distri = nn.Softmax(dim=-1)(teacher_pred_distri)
+            teacher_pred_distri = nn.Softmax(dim=-1)(teacher_pred_distri / self.tau)
             pred_distri = pred_distri.reshape(*pred_distri.shape[:-1], 4, -1)[fg_mask]
-            pred_distri = nn.LogSoftmax(dim=-1)(pred_distri)
+            pred_distri = nn.LogSoftmax(dim=-1)(pred_distri / self.tau)
             # kd_dfl_loss = self.bce(pred_distri[fg_mask], teacher_pred_distri[fg_mask].sigmoid()).sum() / target_scores_sum
             kd_dfl_loss = F.kl_div(pred_distri, teacher_pred_distri, reduction="none").sum(-1).mean(-1).sum() / target_scores_sum
 
             # intermediate tensors, L2 loss
-            kd_intermediate_loss = []
-            for s, t in zip(student_tensors, teacher_tensors):
-                t = t.detach()
-                assert s.shape == t.shape, f"shape mismatch {s.shape} vs {t.shape} — topology should match"
-                s_n = s / (s.norm(p=2, dim=1, keepdim=True) + 1e-6)
-                t_n = t / (t.norm(p=2, dim=1, keepdim=True) + 1e-6)
-                kd_intermediate_loss.append(F.mse_loss(s_n, t_n))
-            kd_intermediate_loss = torch.stack(kd_intermediate_loss).mean()
+            if self.hyp.get('kd_int') and student_tensors and teacher_tensors:
+                kd_intermediate_loss = []
+                for s, t in zip(student_tensors, teacher_tensors):
+                    t = t.detach()
+                    assert s.shape == t.shape, f"shape mismatch {s.shape} vs {t.shape} — topology should match"
+                    s_n = s / (s.norm(p=2, dim=1, keepdim=True) + 1e-6)
+                    t_n = t / (t.norm(p=2, dim=1, keepdim=True) + 1e-6)
+                    kd_intermediate_loss.append(F.mse_loss(s_n, t_n))
+                kd_intermediate_loss = torch.stack(kd_intermediate_loss).mean()
+            else:
+                kd_intermediate_loss = 0
 
             loss = torch.cat([loss, torch.stack([kd_cls_loss, kd_dfl_loss, kd_intermediate_loss])])
             loss[3] *= self.hyp['kd_cls']

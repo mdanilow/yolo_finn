@@ -113,10 +113,6 @@ def train(hyp, opt, device, tb_writer=None):
             kd_intermediate_tensors = [int(x) for x in opt.kd_intermediate_tensors]
             model.features_to_save = kd_intermediate_tensors
             teacher_model.features_to_save = kd_intermediate_tensors
-        else:
-            print("ERROR, kd_intermediate_tensors not given")
-            sys.exit()
-
 
     # Freeze
     freeze = [f'model.{x}.' for x in (freeze if len(freeze) > 1 else range(freeze[0]))]  # parameter names to freeze (full or partial)
@@ -399,6 +395,7 @@ def train(hyp, opt, device, tb_writer=None):
                 if plots and ni < 5:
                     f = save_dir / f'train_batch{ni}.jpg'  # filename
                     Thread(target=plot_images, args=(imgs, targets, paths, f), daemon=True).start()
+                    # plot_images(imgs, targets, paths, f, max_subplots=1)
                     # if tb_writer:
                     #     tb_writer.add_image(f, result, dataformats='HWC', global_step=epoch)
                     #     tb_writer.add_graph(torch.jit.trace(model, imgs, strict=False), [])  # add model graph
