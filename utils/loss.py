@@ -1941,7 +1941,7 @@ class v8DetectionLoss:
                     kd_intermediate_loss.append(F.mse_loss(s_n, t_n))
                 kd_intermediate_loss = torch.stack(kd_intermediate_loss).mean()
             else:
-                kd_intermediate_loss = 0
+                kd_intermediate_loss = torch.tensor(0, device=self.device)
 
             loss = torch.cat([loss, torch.stack([kd_cls_loss, kd_dfl_loss, kd_intermediate_loss])])
             loss[3] *= self.hyp['kd_cls']
