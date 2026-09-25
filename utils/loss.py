@@ -1919,7 +1919,7 @@ class v8DetectionLoss:
             )
             teacher_pred_scores = teacher_pred_scores.permute(0, 2, 1).contiguous()
             # teacher_scores_sum = max(teacher_pred_scores.sum(), 1)
-            kd_cls_loss = self.bce(pred_scores, teacher_pred_scores.sigmoid()).sum() / target_scores_sum
+            kd_cls_loss = self.bce(pred_scores[fg_mask], teacher_pred_scores[fg_mask].sigmoid()).sum() / target_scores_sum
 
             # box
             teacher_pred_distri = teacher_pred_distri.permute(0, 2, 1).contiguous()
@@ -1927,7 +1927,6 @@ class v8DetectionLoss:
             teacher_pred_distri = nn.Softmax(dim=-1)(teacher_pred_distri / self.tau)
             pred_distri = pred_distri.reshape(*pred_distri.shape[:-1], 4, -1)[fg_mask]
             pred_distri = nn.LogSoftmax(dim=-1)(pred_distri / self.tau)
-            # kd_dfl_loss = self.bce(pred_distri[fg_mask], teacher_pred_distri[fg_mask].sigmoid()).sum() / target_scores_sum
             kd_dfl_loss = F.kl_div(pred_distri, teacher_pred_distri, reduction="none").sum(-1).mean(-1).sum() / target_scores_sum
 
             # intermediate tensors, L2 loss

@@ -279,7 +279,6 @@ def train(hyp, opt, device, tb_writer=None):
     if hasattr(last_layer, 'dedicated_loss'):
         compute_loss = last_layer.dedicated_loss(model)
     else:
-        compute_loss_ota = ComputeLossOTA(model)  # init loss class
         compute_loss = ComputeLoss(model)  # init loss class
     logger.info(f'Image sizes {imgsz} train, {imgsz_test} test\n'
                 f'Using {dataloader.num_workers} dataloader workers\n'
@@ -359,10 +358,7 @@ def train(hyp, opt, device, tb_writer=None):
                 model.saved_features = []
                 teacher_model.saved_features = []
             else:
-                if 'loss_ota' not in hyp or hyp['loss_ota'] == 1:
-                    loss, loss_items = compute_loss_ota(pred, targets.to(device), imgs)  # loss scaled by batch_size
-                else:
-                    loss, loss_items = compute_loss(pred, targets.to(device))  # loss scaled by batch_size
+                loss, loss_items = compute_loss(pred, targets.to(device))  # loss scaled by batch_size
             if rank != -1:
                 loss *= opt.world_size  # gradient averaged between devices in DDP mode
             if opt.quad:
