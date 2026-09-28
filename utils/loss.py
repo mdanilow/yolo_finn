@@ -1919,7 +1919,7 @@ class v8DetectionLoss:
             )
             teacher_pred_scores = teacher_pred_scores.permute(0, 2, 1).contiguous()
             # teacher_scores_sum = max(teacher_pred_scores.sum(), 1)
-            kd_cls_loss = self.bce(pred_scores[fg_mask], teacher_pred_scores[fg_mask].sigmoid()).sum() / target_scores_sum
+            kd_cls_loss = self.bce(pred_scores, teacher_pred_scores.sigmoid()).sum() / target_scores_sum
 
             # box
             teacher_pred_distri = teacher_pred_distri.permute(0, 2, 1).contiguous()
