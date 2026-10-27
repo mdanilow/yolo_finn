@@ -1947,8 +1947,87 @@ class v8DetectionLoss:
             loss[4] *= self.hyp['kd_dfl']
             loss[5] *= self.hyp['kd_int']
 
+        # # debug
+        # import cv2
+        # gt_points = anchor_points * stride_tensor * torch.unsqueeze(fg_mask[0], 1)
+        # vis_img = np.ones((int(imgsz[0]), int(imgsz[1]), 3), np.uint8) * 255
+        # for pt in gt_points:
+        #     vis_img = cv2.circle(vis_img, (int(pt[0]), int(pt[1])), 2, (0, 0, 255))
+        # cv2.imshow("fg_mask", vis_img)
+
+        # vis_img2 = np.ones((int(imgsz[0]), int(imgsz[1]), 3), np.uint8) * 255
+        # boxes = self.build_anchor_boxes(anchor_points.shape[0], imgsz[0])
+        # for box in boxes[::211]:
+        #     for b in box:
+        #         b = [int(x) for x in b]
+        #         vis_img2 = cv2.rectangle(vis_img2, b[:2], b[-2:], (0, 255, 0), 1)
+        #         cv2.imshow("boxes", vis_img2)
+        #         cv2.waitKey(0)
+        
         loss[0] *= self.hyp['box']  # box gain
         loss[1] *= self.hyp['cls']  # cls gain
         loss[2] *= self.hyp['dfl']  # dfl gain
 
         return loss.sum() * batch_size, loss.detach()  # loss(box, cls, dfl)
+
+
+    def build_anchor_boxes(self, num_anchors, imgsz):
+        """
+        Generate anchor boxes for knowledge distillation
+        """
+        anchors = [[10, 13], [16, 30], [33, 23], [30, 61], [62, 45], [59, 119], [116, 90], [156, 198], [373, 326]]
+        anchors = torch.tensor(anchors, device=self.device) * imgsz / 640
+        anchors = anchors.unsqueeze(0)
+        anchors = anchors.repeat(num_anchors, 1)
+        return anchors
+
+
+    def compute_vlr_mask(self, anc_boxes, gt_bboxes, mask_gt, alpha_pos, gamma, chunk_size=None):
+        """
+        Algorithm 1, implemented literally:
+        1. X = DIoU(B^a, B^gt) for EVERY anchor box vs EVERY GT box -- dense,
+            NOT gated by "anchor center inside GT box" and NOT gated by which
+            anchors the label assigner actually selected as positive. Those
+            are both properties of TAL's own assignment, and Algorithm 1 has
+            no dependency on the assigner at all -- it only reads geometry.
+        2. alpha_vl = gamma * alpha_pos
+        3. V = {alpha_vl <= X <= alpha_pos}
+    
+        alpha_pos is "the positive IoU threshold of label assignment" (Sec 3.3).
+        TaskAlignedAssigner has no single global IoU threshold (dynamic top-k
+        alignment-metric assignment, unlike ATSS), so there is nothing to read
+        this value out of automatically -- it must be supplied as a config
+        value. This is an unavoidable adaptation point when porting Algorithm 1
+        to a TAL-based detector; the paper never has to address it because its
+        own experiments used ATSS/FCOS/GFocal, whose assigners have an explicit
+        IoU threshold to reuse directly.
+    
+        anc_boxes: (num_anchors, 4) xyxy, shared across the batch (preset,
+            independent of predictions/content)
+        gt_bboxes: (b, n_max_boxes, 4) xyxy, pixel units
+        mask_gt:   (b, n_max_boxes, 1) bool -- valid (non-padding) GT rows
+        chunk_size: optional int, loop over GT boxes in chunks of this size to
+            bound the peak size of the (b, chunk, num_anchors, 4) broadcast.
+        Returns: vlr_mask (b, num_anchors) bool
+        """
+        b, n_max_boxes = gt_bboxes.shape[:2]
+        na = anc_boxes.shape[0]
+        alpha_vl = gamma * alpha_pos
+        mask_gt_flat = mask_gt.squeeze(-1).bool()  # (b, n_max_boxes)
+    
+        vlr_mask = torch.zeros(b, na, dtype=torch.bool, device=gt_bboxes.device)
+        if n_max_boxes == 0:
+            return vlr_mask
+    
+        step = chunk_size or n_max_boxes
+        for j0 in range(0, n_max_boxes, step):
+            j1 = min(j0 + step, n_max_boxes)
+            c = j1 - j0
+            gt = gt_bboxes[:, j0:j1].unsqueeze(2).expand(-1, -1, na, -1)          # (b, c, na, 4)
+            anc = anc_boxes.view(1, 1, na, 4).expand(b, c, -1, -1)                # (b, c, na, 4)
+            diou = bbox_iou(gt, anc, xywh=False, DIoU=True).squeeze(-1)           # (b, c, na)
+            in_range = (diou >= alpha_vl) & (diou <= alpha_pos)
+            in_range &= mask_gt_flat[:, j0:j1].unsqueeze(-1)
+            vlr_mask |= in_range.any(dim=1)
+    
+        return vlr_mask

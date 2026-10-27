@@ -391,7 +391,10 @@ def train(hyp, opt, device, tb_writer=None):
                 if plots and ni < 5:
                     f = save_dir / f'train_batch{ni}.jpg'  # filename
                     Thread(target=plot_images, args=(imgs, targets, paths, f), daemon=True).start()
-                    # plot_images(imgs, targets, paths, f, max_subplots=1)
+                    # import cv2
+                    # vis_img = plot_images(imgs, targets, paths, None, max_subplots=1)
+                    # cv2.imshow("test", vis_img)
+                    # cv2.waitKey(0)
                     # if tb_writer:
                     #     tb_writer.add_image(f, result, dataformats='HWC', global_step=epoch)
                     #     tb_writer.add_graph(torch.jit.trace(model, imgs, strict=False), [])  # add model graph
